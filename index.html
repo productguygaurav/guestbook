@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Guestbook</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 560px;
+        margin: 40px auto;
+        padding: 0 16px;
+        background: #faf8f5;
+        color: #222;
+      }
+      h1 {
+        margin-bottom: 4px;
+      }
+      p.sub {
+        margin-top: 0;
+        color: #666;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 24px 0;
+      }
+      input,
+      textarea {
+        padding: 10px;
+        font: inherit;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+      }
+      textarea {
+        min-height: 70px;
+        resize: vertical;
+      }
+      button {
+        padding: 10px;
+        font: inherit;
+        background: #222;
+        color: #fff;
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+      }
+      .note {
+        background: #fff;
+        border: 1px solid #e5e0d8;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+      }
+      .note b {
+        display: block;
+      }
+      .note small {
+        color: #888;
+      }
+      #status {
+        color: #b00;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>My Guestbook</h1>
+    <p class="sub">Leave a message. It gets saved in Supabase.</p>
+
+    <form id="form">
+      <input id="name" placeholder="Your name" required maxlength="50" />
+      <textarea
+        id="message"
+        placeholder="Your message"
+        required
+        maxlength="300"
+      ></textarea>
+      <button id="btn" type="submit">Post message</button>
+    </form>
+
+    <p id="status"></p>
+    <div id="list">Loading messages...</div>
+
+    <script type="module">
+      import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+      // STEP: paste your own two values from Supabase here
+      const SUPABASE_URL = "https://hfvpenjeenpidxrbgefw.supabase.co";
+      const SUPABASE_KEY = "sb_publishable__OtLi5rikfwHhHoeNjU4NQ_WDYkqpqd";
+
+      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      const list = document.getElementById("list");
+      const status = document.getElementById("status");
+      const form = document.getElementById("form");
+      const btn = document.getElementById("btn");
+
+      // Read: get all messages, newest first
+      async function loadMessages() {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          list.textContent = "";
+          status.textContent = "Could not load messages: " + error.message;
+          return;
+        }
+
+        list.innerHTML = "";
+        if (data.length === 0) {
+          list.textContent = "No messages yet. Be the first!";
+          return;
+        }
+
+        for (const row of data) {
+          const div = document.createElement("div");
+          div.className = "note";
+          const name = document.createElement("b");
+          name.textContent = row.name;
+          const msg = document.createElement("div");
+          msg.textContent = row.message;
+          const time = document.createElement("small");
+          time.textContent = new Date(row.created_at).toLocaleString();
+          div.append(name, msg, time);
+          list.appendChild(div);
+        }
+      }
+
+      // Write: save a new message
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        btn.disabled = true;
+        status.textContent = "";
+
+        const { error } = await supabase.from("messages").insert({
+          name: document.getElementById("name").value.trim(),
+          message: document.getElementById("message").value.trim(),
+        });
+
+        btn.disabled = false;
+        if (error) {
+          status.textContent = "Could not save: " + error.message;
+          return;
+        }
+        form.reset();
+        loadMessages();
+      });
+
+      loadMessages();
+    </script>
+  </body>
+</html>
