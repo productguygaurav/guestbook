@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Guestbook - First Project</title>
+    <title>My Guestbook</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -20,11 +20,28 @@
         margin-top: 0;
         color: #666;
       }
+      .box {
+        background: #fff;
+        border: 1px solid #e5e0d8;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+      .box h2 {
+        font-size: 1rem;
+        margin: 0 0 10px;
+      }
       form {
         display: flex;
         flex-direction: column;
         gap: 10px;
-        margin: 24px 0;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+      }
+      .row button {
+        flex: 1;
       }
       input,
       textarea {
@@ -46,6 +63,10 @@
         border-radius: 6px;
         cursor: pointer;
       }
+      button.light {
+        background: #eee;
+        color: #222;
+      }
       button:disabled {
         opacity: 0.5;
       }
@@ -62,25 +83,69 @@
       .note small {
         color: #888;
       }
+      .note button {
+        margin-top: 8px;
+        padding: 4px 10px;
+        font-size: 0.85rem;
+        background: #fff;
+        color: #b00;
+        border: 1px solid #b00;
+      }
       #status {
         color: #b00;
+      }
+      .hidden {
+        display: none;
       }
     </style>
   </head>
   <body>
     <h1>My Guestbook</h1>
-    <p class="sub">Leave a message. It gets saved in Supabase.</p>
+    <p class="sub">Anyone can read. Only signed-in people can post.</p>
 
-    <form id="form">
-      <input id="name" placeholder="Your name" required maxlength="50" />
-      <textarea
-        id="message"
-        placeholder="Your message"
-        required
-        maxlength="300"
-      ></textarea>
-      <button id="btn" type="submit">Post message</button>
-    </form>
+    <!-- Shown when NOT signed in: the door guard -->
+    <div id="loggedOut" class="box">
+      <h2>Sign in to leave a message</h2>
+      <form id="authForm">
+        <input id="email" type="email" placeholder="Email" required />
+        <input
+          id="password"
+          type="password"
+          placeholder="Password (at least 6 characters)"
+          required
+          minlength="6"
+        />
+        <div class="row">
+          <button id="loginBtn" type="submit">Log in</button>
+          <button id="signupBtn" type="button" class="light">Sign up</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Shown when signed in: the message form -->
+    <div id="loggedIn" class="box hidden">
+      <p style="margin-top: 0">
+        Signed in as <b id="who"></b>
+        <button
+          id="logoutBtn"
+          type="button"
+          class="light"
+          style="padding: 4px 10px; margin-left: 8px"
+        >
+          Log out
+        </button>
+      </p>
+      <form id="msgForm">
+        <input id="name" placeholder="Your name" required maxlength="50" />
+        <textarea
+          id="message"
+          placeholder="Your message"
+          required
+          maxlength="300"
+        ></textarea>
+        <button id="postBtn" type="submit">Post message</button>
+      </form>
+    </div>
 
     <p id="status"></p>
     <div id="list">Loading messages...</div>
@@ -88,18 +153,63 @@
     <script type="module">
       import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
-      // STEP: paste your own two values from Supabase here
+      // Paste your own two values from Supabase here (same as before)
       const SUPABASE_URL = "https://hfvpenjeenpidxrbgefw.supabase.co";
       const SUPABASE_KEY = "sb_publishable__OtLi5rikfwHhHoeNjU4NQ_WDYkqpqd";
 
       const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      const list = document.getElementById("list");
-      const status = document.getElementById("status");
-      const form = document.getElementById("form");
-      const btn = document.getElementById("btn");
+      const $ = (id) => document.getElementById(id);
+      let currentUser = null;
 
-      // Read: get all messages, newest first
+      function showError(msg) {
+        $("status").textContent = msg;
+      }
+
+      // ---------- LOGIN PART (the door guard) ----------
+
+      // Log in with an existing account
+      $("authForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        showError("");
+        const { error } = await supabase.auth.signInWithPassword({
+          email: $("email").value.trim(),
+          password: $("password").value,
+        });
+        if (error) showError("Login failed: " + error.message);
+      });
+
+      // Create a new account
+      $("signupBtn").addEventListener("click", async () => {
+        showError("");
+        if (!$("authForm").reportValidity()) return;
+        const { data, error } = await supabase.auth.signUp({
+          email: $("email").value.trim(),
+          password: $("password").value,
+        });
+        if (error) return showError("Sign up failed: " + error.message);
+        if (!data.session)
+          showError(
+            "Account created. Check your email to confirm it, then log in.",
+          );
+      });
+
+      // Log out
+      $("logoutBtn").addEventListener("click", async () => {
+        await supabase.auth.signOut();
+      });
+
+      // Supabase tells us whenever someone logs in or out, and we update the page
+      supabase.auth.onAuthStateChange((event, session) => {
+        currentUser = session ? session.user : null;
+        $("loggedOut").classList.toggle("hidden", !!currentUser);
+        $("loggedIn").classList.toggle("hidden", !currentUser);
+        $("who").textContent = currentUser ? currentUser.email : "";
+        setTimeout(loadMessages, 0);
+      });
+
+      // ---------- MESSAGES PART (the register book) ----------
+
       async function loadMessages() {
         const { data, error } = await supabase
           .from("messages")
@@ -107,11 +217,11 @@
           .order("created_at", { ascending: false });
 
         if (error) {
-          list.textContent = "";
-          status.textContent = "Could not load messages: " + error.message;
-          return;
+          $("list").textContent = "";
+          return showError("Could not load messages: " + error.message);
         }
 
+        const list = $("list");
         list.innerHTML = "";
         if (data.length === 0) {
           list.textContent = "No messages yet. Be the first!";
@@ -128,31 +238,39 @@
           const time = document.createElement("small");
           time.textContent = new Date(row.created_at).toLocaleString();
           div.append(name, msg, time);
+
+          // Show a Delete button only on your own messages
+          if (currentUser && row.user_id === currentUser.id) {
+            const del = document.createElement("button");
+            del.textContent = "Delete";
+            del.addEventListener("click", () => deleteMessage(row.id));
+            div.append(document.createElement("br"), del);
+          }
           list.appendChild(div);
         }
       }
 
-      // Write: save a new message
-      form.addEventListener("submit", async (e) => {
+      // Post a message (Supabase fills in user_id by itself)
+      $("msgForm").addEventListener("submit", async (e) => {
         e.preventDefault();
-        btn.disabled = true;
-        status.textContent = "";
-
+        showError("");
+        $("postBtn").disabled = true;
         const { error } = await supabase.from("messages").insert({
-          name: document.getElementById("name").value.trim(),
-          message: document.getElementById("message").value.trim(),
+          name: $("name").value.trim(),
+          message: $("message").value.trim(),
         });
-
-        btn.disabled = false;
-        if (error) {
-          status.textContent = "Could not save: " + error.message;
-          return;
-        }
-        form.reset();
+        $("postBtn").disabled = false;
+        if (error) return showError("Could not save: " + error.message);
+        $("msgForm").reset();
         loadMessages();
       });
 
-      loadMessages();
+      async function deleteMessage(id) {
+        showError("");
+        const { error } = await supabase.from("messages").delete().eq("id", id);
+        if (error) return showError("Could not delete: " + error.message);
+        loadMessages();
+      }
     </script>
   </body>
 </html>
